@@ -1,5 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
+require("dotenv").config();
+const encrypt = require("mongoose-encryption");
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
@@ -20,6 +22,9 @@ const userSchema = new Schema({
   },
 });
 
+const secret = process.env.SECRET;
+userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] });
+
 const User = mongoose.model("User", userSchema);
 mongoose
   .connect("mongodb://localhost:27017/secretsDB")
@@ -34,46 +39,55 @@ app.get("/register", (req, res) => {
   res.render("register");
 });
 
-app.post("/register", (req, res) => {
+app.post("/register", async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    res.send({ success: false, message: "Missing email and/or password." });
+    return res.json({
+      success: false,
+      message: "Missing email and/or password.",
+    });
   }
-
-  User.findOne({ email }).then((foundUser) => {
+  try {
+    const foundUser = await User.findOne({ email });
     if (foundUser) {
-      res.send({ success: false, message: "This email already taken." });
+      return res.json({ success: false, message: "This email already taken." });
     }
-  });
 
-  const newUser = new User({ email, password });
-  newUser
-    .save()
-    .then(() => res.render("secrets"))
-    .catch((error) => console.error(error));
+    const newUser = new User({ email, password });
+    await newUser.save();
+    res.render("secrets");
+  } catch {
+    (error) => console.error(error);
+    res.json({ succsess: false, message: "Internal server error." });
+  }
 });
 
 app.get("/login", (req, res) => {
   res.render("login");
 });
 
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
-    res.send({ success: false, message: "Missing email and/or password." });
+    return res.json({
+      success: false,
+      message: "Missing email and/or password.",
+    });
   }
-  User.findOne({ email, password })
-    .then((foundUser) => {
-      if (!foundUser) {
-        res.send({
-          success: false,
-          message: "Incorrect username and/or password.",
-        });
-      }
-      res.render("secrets");
-    })
-    .catch((error) => console.error(error));
+  try {
+    const foundUser = await User.findOne({ email });
+    if (!foundUser || foundUser.password !== password) {
+      return res.json({
+        success: false,
+        message: "Incorrect username and/or password.",
+      });
+    }
+    res.render("secrets");
+  } catch (error) {
+    console.error(error);
+    res.json({ succsess: false, message: "Internal server error." });
+  }
 });
 
 const PORT = 3000;
